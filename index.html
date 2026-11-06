@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Invoicer</title>
+<style>
+:root{--bg:#f6f5f1;--sf:#fff;--tx:#1c1b18;--mu:#6b6a63;--bd:#dedcd3;--ac:#0f6e56;--on:#fff;--er:#b3261e;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#15140f;--sf:#201f19;--tx:#efede4;--mu:#a09e92;--bd:#3a382f;--ac:#3fb592;--on:#08201a;--er:#f2b8b5;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+.card{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:20px;margin-bottom:16px}
+h1,h2{margin:0 0 12px;font-weight:600}h1{font-size:22px}h2{font-size:17px}
+label{display:block;font-size:13px;color:var(--mu);margin:10px 0 4px}
+input,select{width:100%;padding:9px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--tx);padding:9px 14px}
+button.p{background:var(--ac);color:var(--on);border-color:var(--ac);font-weight:600}
+button.g{width:100%;margin-top:8px}
+.tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.tabs button.on{background:var(--tx);color:var(--bg)}
+.top{display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600}
+.brand img{height:36px;max-width:90px;object-fit:contain}
+.err{color:var(--er);font-size:13px;margin-top:8px;min-height:18px}
+.mu{color:var(--mu);font-size:13px}
+.auth{max-width:380px;margin:8vh auto 0}
+.or{text-align:center;color:var(--mu);font-size:13px;margin:12px 0 4px}
+#gbtn{display:flex;justify-content:center;margin-top:8px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{padding:6px;text-align:left;border-bottom:1px solid var(--bd);font-size:14px}
+th{font-size:12px;color:var(--mu);text-transform:uppercase}
+td input{padding:6px 8px}
+.num{text-align:right}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.list-i{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+.doc{background:#fff;color:#1c1b18;padding:28px;border:1px solid var(--bd);border-radius:8px}
+.doc table{min-width:0}.doc th,.doc td{border-color:#ddd;color:#1c1b18}.doc th{color:#666}
+.doc .hd{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap}
+.doc img{max-height:70px;max-width:160px;object-fit:contain}
+.doc tfoot td{font-weight:700;border-top:2px solid #1c1b18;border-bottom:0}
+@media print{body *{visibility:hidden}#doc,#doc *{visibility:visible}#doc{position:absolute;left:0;top:0;width:100%;border:0}}
+</style></head>
+<body><div class="wrap" id="app"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=(n,c)=>c+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+async function api(path,method='GET',body){
+  const r=await fetch('/api'+path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||'Request failed');
+  return j;
+}
+let S={user:null,invoices:[],mode:'in',tab:'new',err:'',view:null,draft:null,gid:''};
+const newDraft=()=>({client:'',number:'INV-'+String(S.user.nextNo).padStart(4,'0'),date:new Date().toISOString().slice(0,10),currency:'GH₵',rows:[{item:'',description:'',quantity:1,unit_price:0}]});
+const totals=rows=>({q:rows.reduce((a,r)=>a+(+r.quantity||0),0),t:rows.reduce((a,r)=>a+(+r.quantity||0)*(+r.unit_price||0),0)});
+
+async function enter(user){S.user=user;S.invoices=await api('/invoices');S.draft=newDraft();S.tab='new';S.view=null;S.err='';render()}
+const render=()=>S.user?renderApp():renderAuth();
+
+function renderAuth(){
+  const up=S.mode==='up';
+  $('#app').innerHTML=`<div class="card auth"><h1>Invoicer</h1><p class="mu">${up?'Create your account':'Sign in to your account'}</p>
+  ${up?'<label>Your name</label><input id="nm" autocomplete="name">':''}
+  <label>Email</label><input id="em" type="email" autocomplete="email">
+  <label>Password</label><input id="pw" type="password" autocomplete="${up?'new-password':'current-password'}" placeholder="${up?'At least 8 characters':''}">
+  <div class="err">${esc(S.err)}</div>
+  <button class="p g" data-a="submit">${up?'Create account':'Sign in'}</button>
+  <div class="or">or</div>
+  ${S.gid?'<div id="gbtn"></div>':'<p class="mu">Google sign-in is off. Add GOOGLE_CLIENT_ID to your .env file to turn it on.</p>'}
+  <p class="mu" style="margin-top:14px">${up?'Have an account? <a href="#" data-a="mode-in">Sign in</a>':'New here? <a href="#" data-a="mode-up">Create an account</a>'}</p></div>`;
+  if(S.gid&&window.google&&google.accounts){
+    google.accounts.id.initialize({client_id:S.gid,callback:async r=>{try{await enter(await api('/auth/google','POST',{credential:r.credential}))}catch(e){S.err=e.message;renderAuth()}}});
+    google.accounts.id.renderButton($('#gbtn'),{theme:'outline',size:'large',text:'continue_with',width:320});
+  }
+}
+function renderApp(){
+  const u=S.user;
+  const tabs=[['new','New invoice'],['saved','Saved invoices ('+S.invoices.length+')'],['biz','Business profile']];
+  $('#app').innerHTML=`<div class="top"><div class="brand">${u.logo?`<img src="${u.logo}" alt="Logo">`:''}<span>${esc(u.businessName||'Your business')}</span></div>
+  <div><span class="mu">${esc(u.email)}</span> <button data-a="out">Sign out</button></div></div>
+  <div class="tabs">${tabs.map(t=>`<button class="${S.tab===t[0]&&!S.view?'on':''}" data-a="tab-${t[0]}">${t[1]}</button>`).join('')}</div><div id="body"></div>`;
+  const b=$('#body');
+  if(S.view)return b.innerHTML=docHTML(S.view)+`<div class="acts"><button class="p" data-a="print">Print / Save as PDF</button><button data-a="back">Back</button></div>`;
+  if(S.tab==='biz')return bizView(b);
+  if(S.tab==='saved')return savedView(b);
+  editorView(b);
+}
+function bizView(b){
+  const u=S.user;
+  b.innerHTML=`<div class="card"><h2>Business profile</h2><label>Business name</label><input id="bn" value="${esc(u.businessName)}">
+  <label>Logo</label><input id="lg" type="file" accept="image/*">
+  ${u.logo?`<p><img src="${u.logo}" alt="Logo" style="max-height:70px;max-width:160px"></p>`:''}
+  <div class="acts"><button class="p" data-a="savebiz">Save profile</button></div><div class="err" id="bm"></div></div>`;
+}
+function savedView(b){
+  const inv=S.invoices;
+  b.innerHTML=`<div class="card"><h2>Saved invoices</h2>${inv.length?inv.map(i=>`<div class="list-i"><div><b>${esc(i.number)}</b> · ${esc(i.client||'No client')}<div class="mu">${esc(i.date)} · Qty ${i.total_qty} · ${fmt(i.total,i.currency)}</div></div><div><button data-a="view-${i.id}">Open</button> <button data-a="del-${i.id}">Delete</button></div></div>`).join(''):'<p class="mu">No invoices yet. Every invoice you generate is kept here as a copy.</p>'}</div>`;
+}
+function editorView(b){
+  const D=S.draft;
+  b.innerHTML=`<div class="card"><h2>New invoice</h2>
+  ${S.user.businessName?'':'<p class="mu">Tip: add your business name and logo under Business profile so they appear on the invoice.</p>'}
+  <div class="row2"><div><label>Bill to (client)</label><input data-k="client" value="${esc(D.client)}"></div>
+  <div><label>Invoice no.</label><input data-k="number" value="${esc(D.number)}"></div>
+  <div><label>Date</label><input type="date" data-k="date" value="${D.date}"></div>
+  <div><label>Currency</label><select data-k="currency">${['GH₵','$','€','£','₦'].map(c=>`<option ${c===D.currency?'selected':''}>${c}</option>`).join('')}</select></div></div>
+  <div class="scroll" style="margin-top:14px"><table><thead><tr><th>SN</th><th>Item</th><th>Description</th><th style="width:80px">Quantity</th><th style="width:110px">Unit price</th><th class="num" style="width:110px">Total</th><th></th></tr></thead><tbody id="rows"></tbody>
+  <tfoot><tr><td colspan="3"><b>Totals</b></td><td id="tq"></td><td></td><td class="num" id="tt"></td><td></td></tr></tfoot></table></div>
+  <div class="err" id="em2"></div>
+  <div class="acts"><button data-a="addrow">+ Add row</button><button class="p" data-a="gen">Generate invoice</button></div></div>`;
+  drawRows();
+}
+function drawRows(){
+  const D=S.draft;
+  $('#rows').innerHTML=D.rows.map((r,i)=>`<tr><td>${i+1}</td><td><input data-i="${i}" data-f="item" value="${esc(r.item)}"></td><td><input data-i="${i}" data-f="description" value="${esc(r.description)}"></td><td><input type="number" min="0" step="any" data-i="${i}" data-f="quantity" value="${r.quantity}"></td><td><input type="number" min="0" step="any" data-i="${i}" data-f="unit_price" value="${r.unit_price}"></td><td class="num" id="rt${i}"></td><td><button data-a="rm-${i}" aria-label="Remove row">×</button></td></tr>`).join('');
+  upd();
+}
+function upd(){
+  const D=S.draft,t=totals(D.rows);
+  D.rows.forEach((r,i)=>{const e=$('#rt'+i);if(e)e.textContent=fmt((+r.quantity||0)*(+r.unit_price||0),D.currency)});
+  $('#tq').innerHTML='<b>'+t.q+'</b>';$('#tt').innerHTML='<b>'+fmt(t.t,D.currency)+'</b>';
+}
+function docHTML(i){
+  return `<div class="doc" id="doc"><div class="hd"><div>${i.logo?`<img src="${i.logo}" alt="Logo"><br>`:''}<b style="font-size:18px">${esc(i.business_name||'')}</b></div>
+  <div style="text-align:right"><div style="font-size:22px;font-weight:700">INVOICE</div><div>${esc(i.number)}</div><div>${esc(i.date)}</div></div></div>
+  <p><span style="color:#666">Bill to</span><br><b>${esc(i.client||'—')}</b></p>
+  <table><thead><tr><th>SN</th><th>Item</th><th>Description</th><th class="num">Quantity</th><th class="num">Unit price</th><th class="num">Total</th></tr></thead><tbody>
+  ${i.items.map(r=>`<tr><td>${r.sn}</td><td>${esc(r.item)}</td><td>${esc(r.description)}</td><td class="num">${r.quantity}</td><td class="num">${fmt(r.unit_price,i.currency)}</td><td class="num">${fmt(r.total,i.currency)}</td></tr>`).join('')}
+  </tbody><tfoot><tr><td colspan="3">Total</td><td class="num">${i.total_qty}</td><td></td><td class="num">${fmt(i.total,i.currency)}</td></tr></tfoot></table></div>`;
+}
+function shrink(file,cb){
+  const fr=new FileReader();
+  fr.onload=()=>{const im=new Image();im.onload=()=>{const s=Math.min(1,320/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=im.width*s;c.height=im.height*s;c.getContext('2d').drawImage(im,0,0,c.width,c.height);cb(c.toDataURL('image/png'))};im.src=fr.result};
+  fr.readAsDataURL(file);
+}
+let pendingLogo=null;
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.dataset.f){const n=t.dataset.f==='quantity'||t.dataset.f==='unit_price';S.draft.rows[+t.dataset.i][t.dataset.f]=n?(t.value===''?0:+t.value):t.value;upd()}
+  else if(t.dataset.k){S.draft[t.dataset.k]=t.value;if(t.dataset.k==='currency')drawRows()}
+});
+document.addEventListener('change',e=>{
+  if(e.target.id==='lg'&&e.target.files[0])shrink(e.target.files[0],u=>{pendingLogo=u;$('#bm').textContent='Logo ready. Click Save profile.'});
+});
+document.addEventListener('click',async e=>{
+  const el=e.target.closest('[data-a]');if(!el)return;
+  e.preventDefault();const a=el.dataset.a;
+  try{
+    if(a.startsWith('mode-')){S.mode=a.slice(5);S.err='';return renderAuth()}
+    if(a==='submit'){
+      const body={email:$('#em').value,password:$('#pw').value};
+      if(S.mode==='up')body.name=$('#nm').value;
+      try{return await enter(await api(S.mode==='up'?'/auth/register':'/auth/login','POST',body))}
+      catch(er){S.err=er.message;return renderAuth()}
+    }
+    if(a==='out'){await api('/auth/logout','POST');S.user=null;S.mode='in';return render()}
+    if(a.startsWith('tab-')){S.tab=a.slice(4);S.view=null;return renderApp()}
+    if(a==='back'){S.view=null;S.tab='saved';return renderApp()}
+    if(a==='print')return window.print();
+    if(a==='savebiz'){S.user=await api('/profile','PUT',{businessName:$('#bn').value,...(pendingLogo?{logo:pendingLogo}:{})});pendingLogo=null;return renderApp()}
+    if(a==='addrow'){S.draft.rows.push({item:'',description:'',quantity:1,unit_price:0});return drawRows()}
+    if(a.startsWith('rm-')){if(S.draft.rows.length>1)S.draft.rows.splice(+a.slice(3),1);return drawRows()}
+    if(a.startsWith('view-')){S.view=await api('/invoices/'+a.slice(5));return renderApp()}
+    if(a.startsWith('del-')){await api('/invoices/'+a.slice(4),'DELETE');S.invoices=await api('/invoices');return renderApp()}
+    if(a==='gen'){
+      const D=S.draft;
+      const inv=await api('/invoices','POST',{client:D.client,number:D.number,date:D.date,currency:D.currency,items:D.rows.map(r=>({item:r.item,description:r.description,quantity:r.quantity,unit_price:r.unit_price}))});
+      S.user.nextNo++;S.invoices=await api('/invoices');S.draft=newDraft();S.view=inv;renderApp();
+    }
+  }catch(er){const m=$('#em2')||$('#bm');if(m)m.textContent=er.message}
+});
+(async()=>{
+  try{S.gid=(await api('/config')).googleClientId}catch{}
+  if(S.gid){const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.async=true;s.onload=()=>{if(!S.user)renderAuth()};document.head.appendChild(s)}
+  try{await enter(await api('/me'))}catch{render()}
+})();
+</script></body></html>
